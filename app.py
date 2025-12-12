@@ -8,9 +8,6 @@ import sys
 
 """
 ToDO:
-    Greenness metric to chlorophyll mapping
-    health estimation
-    leaf area estimation
     sunflower head area estimation
 """
 
@@ -67,6 +64,122 @@ def compute_chlorophyll_estimate(greenness_score):
     so logarithmic mapping
     """
     return 40 * np.log(greenness_score + 1) #Logarithmic mapping
+
+def camera_ground_intersection(H, tilt_deg, fov_v_deg, fov_h_deg):
+    tilt = math.radians(tilt_deg)
+    fov_v = math.radians(fov_v_deg)
+    fov_h = math.radians(fov_h_deg)
+
+    # Tilt is downward, so pitch positive means down
+    pitch_center = tilt
+
+    # FOV offsets (vertical dv positive = downward)
+    corners = [
+        (-fov_v/2, -fov_h/2),
+        (-fov_v/2, +fov_h/2),
+        (+fov_v/2, -fov_h/2),
+        (+fov_v/2, +fov_h/2),
+    ]
+
+    pts = []
+    for dv, dh in corners:
+        pitch = pitch_center + dv
+        yaw = dh
+
+        dx = math.cos(pitch) * math.cos(yaw)
+        dy = math.cos(pitch) * math.sin(yaw)
+        dz = -math.sin(pitch)  # negative = downward
+
+        if dz >= 0:
+            continue
+
+        t = -H / dz
+        xg = dx * t
+        yg = dy * t
+        pts.append((xg, yg))
+
+    return pts
+
+def visible_land_area(width=1.4, length=7.0,
+                      camera_height=2.0,
+                      camera_distance=1.4,
+                      tilt_deg=15,
+                      fov_v_deg=60,
+                      fov_h_deg=80):
+    """
+    Returns visible ground area of a land rectangle 
+    given camera FOV + geometry.
+    """
+
+    # 1) Compute camera footprint
+    footprint = camera_ground_intersection(camera_height, tilt_deg, fov_v_deg, fov_h_deg)
+
+    if len(footprint) < 3:
+        return 0.0
+
+    # sort footprint to form a valid polygon
+    if len(footprint) >= 3:
+        cx = sum(p[0] for p in footprint) / len(footprint)
+        cy = sum(p[1] for p in footprint) / len(footprint)
+        footprint_sorted = sorted(
+            footprint,
+            key=lambda p: math.atan2(p[1] - cy, p[0] - cx)
+        )
+        cam_poly = geom.Polygon(footprint_sorted)
+    else:
+        return 0.0
+
+
+    # 2) Land polygon
+    land_poly = geom.Polygon([
+        (camera_distance, -width/2),
+        (camera_distance + length, -width/2),
+        (camera_distance + length, +width/2),
+        (camera_distance, +width/2),
+    ])
+
+    # 3) Intersection area = visible area
+    intersect = cam_poly.intersection(land_poly)
+
+    return intersect.area
+
+def estimate_leaf_area(chroma_mask, camera_area_m2):
+    """
+    Estimate minimum leaf area from:
+      - chroma_mask: 0/1 mask of green vegetation (HxW)
+      - camera_area_m2: real-world visible land area in m^2
+
+    Explanation:
+        leaf_area = camera_area_m2 * (green_pixels / total_pixels)
+    """
+
+    green_pixels = np.sum(chroma_mask == 1)
+    total_pixels = chroma_mask.size
+
+    if total_pixels == 0 or camera_area_m2 <= 0:
+        return 0.0
+
+    pixel_fraction = green_pixels / total_pixels
+    estimated_leaf_area = camera_area_m2 * pixel_fraction
+
+    return estimated_leaf_area
+
+def estimate_health_index(leaf_area, visible_land_area, chlorophyll_estimate, yellowness_score):
+    """
+    Placeholder function to estimate plant health index from leaf area and chlorophyll estimate.
+    This is a stub and should be replaced with a proper model based on empirical data.
+    """
+    leaf_density = leaf_area / visible_land_area
+
+    if leaf_area <= 0 or chlorophyll_estimate <= 0:
+        return 0.0
+
+    health_index = ( # weighted health index
+        0.40 * chlorophyll_estimate +
+        0.35 * leaf_density +
+        0.25 * yellowness_score
+    ) * 100
+    return health_index
 
 def main():
     if len(sys.argv) < 2:
@@ -181,6 +294,18 @@ def main():
     print(f"Outside-Polygon Greenness (median): {outside_greenness_median:.4f}")
     print(f"Outside-Polygon Greenness (mean, debug): {outside_greenness_mean:.4f}\n")
     print(f"Estimated Chlorophyll: {compute_chlorophyll_estimate(outside_greenness):.2f}\n")
+    print(f"Visible Land Area: {visible_land_area(tilt_deg=35, fov_v_deg=60, fov_h_deg=80):.2f} m^2")
+    leaf_area_est = estimate_leaf_area(chroma_mask, 
+                                       camera_area_m2=visible_land_area(tilt_deg=35, fov_v_deg=60, fov_h_deg=80))
+    print(f"Estimated Leaf Area: {leaf_area_est:.2f} m^2")
+    health_index = estimate_health_index(
+        leaf_area=leaf_area_est,
+        visible_land_area=visible_land_area(tilt_deg=35, fov_v_deg=60, fov_h_deg=80),
+        chlorophyll_estimate=compute_chlorophyll_estimate(outside_greenness),
+        yellowness_score=np.mean(inside_yellowness_scores) if inside_yellowness_scores else 0.0
+    )
+    print(f"Estimated Health Index: {health_index:.2f}")
+    print("\n=============================\n")
 
     combined = np.hstack((img, blended))
     # Save output
