@@ -1,3 +1,6 @@
+import math
+import shapely.geometry as geom
+import shapely.affinity as aff
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -5,7 +8,8 @@ import sys
 
 """
 ToDO:
-    Greenness&yellowness metric to chlorophyll scale and health estimation
+    Greenness metric to chlorophyll mapping
+    health estimation
     leaf area estimation
     sunflower head area estimation
 """
@@ -55,6 +59,14 @@ def chroma_key_green(bgr_image, threshold=CHROMA_THRESHOLD):
     green_ratio = compute_greenness(flat)
     mask = (green_ratio > threshold)
     return mask.reshape(bgr_image.shape[:2]).astype(np.uint8)
+
+def compute_chlorophyll_estimate(greenness_score):
+    """
+    function to convert greenness score to chlorophyll estimate.
+    Leaves with high chlorophyll look almost the same as medium-chlorophyll leaves
+    so logarithmic mapping
+    """
+    return 40 * np.log(greenness_score + 1) #Logarithmic mapping
 
 def main():
     if len(sys.argv) < 2:
@@ -168,6 +180,7 @@ def main():
     print(f"\nOutside-Polygon Greenness (mean): {outside_greenness:.4f}")
     print(f"Outside-Polygon Greenness (median): {outside_greenness_median:.4f}")
     print(f"Outside-Polygon Greenness (mean, debug): {outside_greenness_mean:.4f}\n")
+    print(f"Estimated Chlorophyll: {compute_chlorophyll_estimate(outside_greenness):.2f}\n")
 
     combined = np.hstack((img, blended))
     # Save output
