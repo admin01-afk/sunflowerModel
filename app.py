@@ -3,6 +3,13 @@ import numpy as np
 from ultralytics import YOLO
 import sys
 
+"""
+ToDO:
+    Greenness&yellowness metric to chlorophyll scale and health estimation
+    leaf area estimation
+    sunflower head area estimation
+"""
+
 # Chroma-key threshold: above this is considered "vegetation"
 CHROMA_THRESHOLD = 0.6
 
