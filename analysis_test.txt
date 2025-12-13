@@ -1,0 +1,11 @@
+=============================
+      ANALYSIS RESULTS
+=============================
+THEORETICAL Visible Land Area: 6.04 m^2, 
+depends ONLY on camera and land configuration
+
+Greenness-Based Chlorophyll Index: 25.75
+Estimated Health Index: 62.63
+Estimated Leaf Area: 5.81 m^2
+Estimated Head Area Fraction: 0.2592
+=============================
